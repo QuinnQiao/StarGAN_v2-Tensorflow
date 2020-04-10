@@ -16,6 +16,7 @@ def parse_args():
     parser.add_argument('--print_freq', type=int, default=1000, help='The number of image_print_freq')
     parser.add_argument('--save_freq', type=int, default=10000, help='The number of ckpt_save_freq')
     parser.add_argument('--gpu_num', type=int, default=1, help='The number of gpu')
+    parser.add_argument('--visible_gpu', type=str, default='3,4', help='Visible Cuda Devices')
 
     parser.add_argument('--decay_flag', type=str2bool, default=True, help='The decay_flag')
     parser.add_argument('--decay_iter', type=int, default=50000, help='decay start iteration')
@@ -41,8 +42,10 @@ def parse_args():
 
     parser.add_argument('--num_style', type=int, default=5, help='number of styles to sample')
 
-    parser.add_argument('--img_height', type=int, default=256, help='The height size of image')
-    parser.add_argument('--img_width', type=int, default=256, help='The width size of image ')
+    # parser.add_argument('--img_height', type=int, default=256, help='The height size of image')
+    # parser.add_argument('--img_width', type=int, default=256, help='The width size of image ')
+    parser.add_argument('--img_height', type=int, default=128, help='The height size of image')
+    parser.add_argument('--img_width', type=int, default=128, help='The width size of image ')    
     parser.add_argument('--img_ch', type=int, default=3, help='The size of image channel')
     parser.add_argument('--augment_flag', type=str2bool, default=True, help='Image augmentation use or not')
 
@@ -90,6 +93,9 @@ def main():
     args = parse_args()
     if args is None:
       exit()
+
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.visible_gpu
 
     # open session
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:

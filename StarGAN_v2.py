@@ -16,8 +16,9 @@ class StarGAN_v2() :
         self.sample_dir = args.sample_dir
         self.result_dir = args.result_dir
         self.log_dir = args.log_dir
-        self.dataset_name = args.dataset
-        self.dataset_path = os.path.join('./dataset', self.dataset_name)
+        # self.dataset_name = args.dataset
+        # self.dataset_path = os.path.join('./dataset', self.dataset_name)
+        self.dataset_path = args.dataset
         self.augment_flag = args.augment_flag
 
         self.decay_flag = args.decay_flag
