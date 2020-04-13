@@ -18,6 +18,7 @@ class StarGAN_v2() :
         self.log_dir = args.log_dir
         # self.dataset_name = args.dataset
         # self.dataset_path = os.path.join('./dataset', self.dataset_name)
+        self.dataset_name = args.dataset.split('/')[-1]
         self.dataset_path = args.dataset
         self.augment_flag = args.augment_flag
 
@@ -646,8 +647,9 @@ class StarGAN_v2() :
 
     def test(self):
         tf.global_variables_initializer().run()
-        test_files = glob('./dataset/{}/{}/*.jpg'.format(self.dataset_name, 'test')) + glob('./dataset/{}/{}/*.png'.format(self.dataset_name, 'test'))
-
+        # test_files = glob('./dataset/{}/{}/*.jpg'.format(self.dataset_name, 'test')) + glob('./dataset/{}/{}/*.png'.format(self.dataset_name, 'test'))
+        dataset = self.dataset_path[:-5]
+        test_files = glob(os.path.join(dataset, 'test', '*.jpg')) + glob(os.path.join(dataset, 'test', '*.png'))
         t_vars = tf.trainable_variables()
         G_vars = [var for var in t_vars if 'generator' in var.name or 'encoder' in var.name or 'mapping' in var.name]
 
@@ -706,8 +708,9 @@ class StarGAN_v2() :
 
     def refer_test(self):
         tf.global_variables_initializer().run()
-        test_files = glob('./dataset/{}/{}/*.jpg'.format(self.dataset_name, 'test')) + glob('./dataset/{}/{}/*.png'.format(self.dataset_name, 'test'))
-
+        dataset = self.dataset_path[:-5]
+        test_files = glob(os.path.join(dataset, 'test', '*.jpg')) + glob(os.path.join(dataset, 'test', '*.png'))
+        
         refer_image = load_test_image(self.refer_img_path, self.img_width, self.img_height, self.img_ch)
 
         t_vars = tf.trainable_variables()
