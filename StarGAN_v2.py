@@ -26,14 +26,13 @@ class StarGAN_v2() :
         self.decay_iter = args.decay_iter
 
         self.gpu_num = args.gpu_num
-        self.iteration = args.iteration // args.gpu_num
-
+        self.iteration = args.iteration #// args.gpu_num
 
         self.gan_type = args.gan_type
 
         self.batch_size = args.batch_size
-        self.print_freq = args.print_freq // args.gpu_num
-        self.save_freq = args.save_freq // args.gpu_num
+        self.print_freq = args.print_freq #// args.gpu_num
+        self.save_freq = args.save_freq #// args.gpu_num
 
         self.init_lr = args.lr
         self.ema_decay = args.ema_decay
@@ -58,7 +57,8 @@ class StarGAN_v2() :
 
         """ Generator """
         self.style_dim = args.style_dim
-        self.n_layer = args.n_layer
+        self.n_layer_1 = args.n_layer_1
+        self.n_layer_2 = args.n_layer_2
         self.num_style = args.num_style
 
         """ Discriminator """
@@ -83,7 +83,7 @@ class StarGAN_v2() :
 
         print("##### Generator #####")
         print("# base channel : ", self.ch)
-        print("# layer number : ", self.n_layer)
+        print("# layer number : ", self.n_layer_1 + self.n_layer_2)
 
         print()
 
@@ -100,16 +100,16 @@ class StarGAN_v2() :
         with tf.variable_scope(scope, reuse=tf.AUTO_REUSE) :
             x = conv(x_init, channels=channel, kernel=1, stride=1, use_bias=True, scope='conv_1x1')
 
-            for i in range(self.n_layer) :
+            for i in range(self.n_layer_1) :
                 x = pre_resblock(x, channels=channel * 2, use_bias=True, scope='down_pre_resblock_' + str(i))
                 x = down_sample_avg(x)
 
                 channel = channel * 2
 
-            for i in range(self.n_layer // 2) :
+            for i in range(self.n_layer_2) :
                 x = pre_resblock(x, channels=channel, use_bias=True, scope='inter_pre_resblock_' + str(i))
 
-            for i in range(self.n_layer // 2) :
+            for i in range(self.n_layer_2) :
                 gamma1 = fully_connected(style, channel, scope='inter_gamma1_fc_' + str(i))
                 beta1 = fully_connected(style, channel, scope='inter_beta1_fc_' + str(i))
 
@@ -124,7 +124,7 @@ class StarGAN_v2() :
 
                 x = pre_adaptive_resblock(x, channel, gamma1, beta1, gamma2, beta2, use_bias=True, scope='inter_pre_ada_resblock_' + str(i))
 
-            for i in range(self.n_layer) :
+            for i in range(self.n_layer_1) :
                 x = up_sample_nearest(x)
 
                 gamma1 = fully_connected(style, channel, scope='up_gamma1_fc_' + str(i))
@@ -153,7 +153,7 @@ class StarGAN_v2() :
         with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
             x = conv(x_init, channels=channel, kernel=1, stride=1, use_bias=True, scope='conv_1x1')
 
-            for i in range(self.n_layer):
+            for i in range(self.n_layer_1):
                 x = pre_resblock_no_norm_relu(x, channels=channel * 2, use_bias=True, scope='down_pre_resblock_' + str(i))
                 x = down_sample_avg(x)
 
@@ -161,11 +161,11 @@ class StarGAN_v2() :
 
             channel = channel * 2
 
-            for i in range(self.n_layer // 2) :
+            for i in range(self.n_layer_2) :
                 x = pre_resblock_no_norm_relu(x, channels=channel, use_bias=True, scope='down_pre_resblock_' + str(i + 4))
                 x = down_sample_avg(x)
 
-            kernel_size = int(self.img_height / np.power(2, self.n_layer + self.n_layer // 2))
+            kernel_size = int(self.img_height / np.power(2, self.n_layer_1 + self.n_layer_2))
 
             x = relu(x)
             x = conv(x, channel, kernel=kernel_size, stride=1, use_bias=True, scope='conv_g_kernel')
@@ -178,12 +178,12 @@ class StarGAN_v2() :
             return style_list
 
     def mapping_network(self, latent_z, scope='mapping_network'):
-        channel = self.ch * pow(2, self.n_layer)
+        channel = self.ch * pow(2, self.n_layer_1)
         style_list = []
         with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
             x = latent_z
 
-            for i in range(self.n_layer + self.n_layer // 2):
+            for i in range(self.n_layer_1 + self.n_layer_2):
                 x = fully_connected(x, units=channel, use_bias=True, scope='fc_' + str(i))
                 x = relu(x)
 
@@ -203,7 +203,7 @@ class StarGAN_v2() :
         with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
             x = conv(x_init, channels=channel, kernel=1, stride=1, use_bias=True, scope='conv_1x1')
 
-            for i in range(self.n_layer):
+            for i in range(self.n_layer_1):
                 x = pre_resblock_no_norm_lrelu(x, channels=channel * 2, use_bias=True, scope='down_pre_resblock_' + str(i))
                 x = down_sample_avg(x)
 
@@ -211,11 +211,11 @@ class StarGAN_v2() :
 
             channel = channel * 2
 
-            for i in range(self.n_layer // 2):
+            for i in range(self.n_layer_2):
                 x = pre_resblock_no_norm_lrelu(x, channels=channel, use_bias=True, scope='down_pre_resblock_' + str(i + 4))
                 x = down_sample_avg(x)
 
-            kernel_size = int(self.img_height / np.power(2, self.n_layer + self.n_layer // 2))
+            kernel_size = int(self.img_height / np.power(2, self.n_layer_1 + self.n_layer_2))
 
             x = lrelu(x, 0.2)
             x = conv(x, channel, kernel=kernel_size, stride=1, use_bias=True, scope='conv_g_kernel')

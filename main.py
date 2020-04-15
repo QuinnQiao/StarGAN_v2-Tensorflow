@@ -12,11 +12,11 @@ def parse_args():
 
     parser.add_argument('--iteration', type=int, default=100000, help='The number of training iterations')
 
-    parser.add_argument('--batch_size', type=int, default=8, help='The size of batch size') # each gpu
+    parser.add_argument('--batch_size', type=int, default=4, help='The size of batch size') # each gpu
     parser.add_argument('--print_freq', type=int, default=1000, help='The number of image_print_freq')
     parser.add_argument('--save_freq', type=int, default=10000, help='The number of ckpt_save_freq')
-    parser.add_argument('--gpu_num', type=int, default=1, help='The number of gpu')
-    parser.add_argument('--visible_gpu', type=str, default='3,4', help='Visible Cuda Devices')
+    parser.add_argument('--gpu_num', type=int, default=2, help='The number of gpu')
+    parser.add_argument('--visible_gpu', type=str, default='0,1', help='Visible Cuda Devices')
 
     parser.add_argument('--decay_flag', type=str2bool, default=True, help='The decay_flag')
     parser.add_argument('--decay_iter', type=int, default=50000, help='decay start iteration')
@@ -36,14 +36,13 @@ def parse_args():
     parser.add_argument('--sn', type=str2bool, default=False, help='using spectral norm')
 
     parser.add_argument('--ch', type=int, default=32, help='base channel number per layer')
-    parser.add_argument('--n_layer', type=int, default=4, help='The number of resblock')
+    parser.add_argument('--n_layer_1', type=int, default=3, help='The number of resblock')
+    parser.add_argument('--n_layer_2', type=int, default=2, help='The number of resblock')
     parser.add_argument('--n_critic', type=int, default=1, help='number of D updates per each G update')
     parser.add_argument('--style_dim', type=int, default=16, help='length of style code')
 
     parser.add_argument('--num_style', type=int, default=5, help='number of styles to sample')
 
-    # parser.add_argument('--img_height', type=int, default=256, help='The height size of image')
-    # parser.add_argument('--img_width', type=int, default=256, help='The width size of image ')
     parser.add_argument('--img_height', type=int, default=128, help='The height size of image')
     parser.add_argument('--img_width', type=int, default=128, help='The width size of image ')    
     parser.add_argument('--img_ch', type=int, default=3, help='The size of image channel')
