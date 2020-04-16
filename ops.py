@@ -7,7 +7,10 @@ from utils import pytorch_xavier_weight_factor, pytorch_kaiming_weight_factor
 ##################################################################################
 
 factor, mode, uniform = pytorch_kaiming_weight_factor(uniform=False)
-weight_init = tf_contrib.layers.variance_scaling_initializer(factor=factor, mode=mode, uniform=uniform)
+# weight_init = tf_contrib.layers.variance_scaling_initializer(factor=factor, mode=mode, uniform=uniform)
+def weight_init(alpha=1.):
+     # stddev = sqrt(factor / fin)
+     return tf_contrib.layers.variance_scaling_initializer(factor=factor * alpha ** 2, mode=mode, uniform=uniform)
 weight_regularizer = None
 weight_regularizer_fully = None
 
@@ -37,7 +40,7 @@ def conv(x, channels, kernel=4, stride=2, pad=0, pad_type='zero', use_bias=True,
                 x = tf.pad(x, [[0, 0], [pad_top, pad_bottom], [pad_left, pad_right], [0, 0]], mode='REFLECT')
 
         if sn:
-            w = tf.get_variable("kernel", shape=[kernel, kernel, x.get_shape()[-1], channels], initializer=weight_init,
+            w = tf.get_variable("kernel", shape=[kernel, kernel, x.get_shape()[-1], channels], initializer=weight_init(),
                                 regularizer=weight_regularizer)
             x = tf.nn.conv2d(input=x, filter=spectral_norm(w),
                              strides=[1, stride, stride, 1], padding='VALID')
@@ -47,33 +50,53 @@ def conv(x, channels, kernel=4, stride=2, pad=0, pad_type='zero', use_bias=True,
 
         else:
             x = tf.layers.conv2d(inputs=x, filters=channels,
-                                 kernel_size=kernel, kernel_initializer=weight_init,
+                                 kernel_size=kernel, kernel_initializer=weight_init(),
                                  kernel_regularizer=weight_regularizer,
                                  strides=stride, use_bias=use_bias, bias_initializer=bias_init)
 
         return x
 
-def fully_connected(x, units, use_bias=True, sn=False, scope='linear'):
+# def fully_connected(x, units, use_bias=True, sn=False, scope='linear'):
+#     with tf.variable_scope(scope):
+#         x = flatten(x)
+#         shape = x.get_shape().as_list()
+#         channels = shape[-1]
+
+#         if sn:
+#             w = tf.get_variable("kernel", [channels, units], tf.float32,
+#                                 initializer=weight_init, regularizer=weight_regularizer_fully)
+#             if use_bias:
+#                 bias = tf.get_variable("bias", [units],
+#                                        initializer=tf.constant_initializer(0.0))
+
+#                 x = tf.matmul(x, spectral_norm(w)) + bias
+#             else:
+#                 x = tf.matmul(x, spectral_norm(w))
+
+#         else:
+#             x = tf.layers.dense(x, units=units, kernel_initializer=weight_init,
+#                                 kernel_regularizer=weight_regularizer_fully,
+#                                 use_bias=use_bias)
+
+#         return x
+
+# apply lr_mul, ignore sn
+def fully_connected(x, units, use_bias=True, lr_mul=1., sn=False, scope='linear'):
     with tf.variable_scope(scope):
         x = flatten(x)
         shape = x.get_shape().as_list()
         channels = shape[-1]
 
-        if sn:
-            w = tf.get_variable("kernel", [channels, units], tf.float32,
-                                initializer=weight_init, regularizer=weight_regularizer_fully)
-            if use_bias:
-                bias = tf.get_variable("bias", [units],
-                                       initializer=tf.constant_initializer(0.0))
+        w = tf.get_variable("kernel", [channels, units], tf.float32,
+                            initializer=weight_init(1. / lr_mul), regularizer=weight_regularizer_fully)
 
-                x = tf.matmul(x, spectral_norm(w)) + bias
-            else:
-                x = tf.matmul(x, spectral_norm(w))
-
+        if use_bias:
+            bias = tf.get_variable("bias", [units],
+                                   initializer=tf.constant_initializer(0.0))
+            x = tf.matmul(x, w * lr_mul) + bias * lr_mul
         else:
-            x = tf.layers.dense(x, units=units, kernel_initializer=weight_init,
-                                kernel_regularizer=weight_regularizer_fully,
-                                use_bias=use_bias)
+            x = tf.matmul(x, w * lr_mul)
+
 
         return x
 
@@ -89,13 +112,17 @@ def pre_resblock(x_init, channels, use_bias=True, sn=False, scope='resblock'):
         _, _, _, init_channel = x_init.get_shape().as_list()
 
         with tf.variable_scope('res1'):
-            x = relu(x_init)
-            x = instance_norm(x)
+            # x = relu(x_init)
+            # x = instance_norm(x)
+            x = instance_norm(x_init)
+            x = relu(x)
             x = conv(x, channels, kernel=3, stride=1, pad=1, pad_type='reflect', use_bias=use_bias, sn=sn)
 
         with tf.variable_scope('res2'):
-            x = relu(x)
+            # x = relu(x)
+            # x = instance_norm(x)
             x = instance_norm(x)
+            x = relu(x)
             x = conv(x, channels, kernel=3, stride=1, pad=1, pad_type='reflect', use_bias=use_bias, sn=sn)
 
         if init_channel != channels :
@@ -144,14 +171,20 @@ def pre_adaptive_resblock(x_init, channels, gamma1, beta1, gamma2, beta2, use_bi
     with tf.variable_scope(scope):
         _, _, _, init_channel = x_init.get_shape().as_list()
         with tf.variable_scope('res1'):
-            x = relu(x_init)
-            x = adaptive_instance_norm(x, gamma1, beta1)
-            x = conv(x, channels, kernel=3, stride=1, pad=1, pad_type='reflect', use_bias=use_bias, bias_init=tf.constant_initializer(1.0), sn=sn)
+            # x = relu(x_init)
+            # x = adaptive_instance_norm(x, gamma1, beta1)
+            # x = conv(x, channels, kernel=3, stride=1, pad=1, pad_type='reflect', use_bias=use_bias, bias_init=tf.constant_initializer(1.0), sn=sn)
+            x = adaptive_instance_norm(x_init, gamma1, beta1)
+            x = relu(x)
+            x = conv(x, channels, kernel=3, stride=1, pad=1, pad_type='reflect', use_bias=use_bias, sn=sn)
 
         with tf.variable_scope('res2'):
-            x = relu(x)
+            # x = relu(x)
+            # x = adaptive_instance_norm(x, gamma2, beta2)
+            # x = conv(x, channels, kernel=3, stride=1, pad=1, pad_type='reflect', use_bias=use_bias, bias_init=tf.constant_initializer(1.0), sn=sn)
             x = adaptive_instance_norm(x, gamma2, beta2)
-            x = conv(x, channels, kernel=3, stride=1, pad=1, pad_type='reflect', use_bias=use_bias, bias_init=tf.constant_initializer(1.0), sn=sn)
+            x = relu(x)
+            x = conv(x, channels, kernel=3, stride=1, pad=1, pad_type='reflect', use_bias=use_bias, sn=sn)
 
         if init_channel != channels :
             with tf.variable_scope('shortcut'):
@@ -284,14 +317,16 @@ def simple_gp(real_logit, fake_logit, real_images, fake_images, r1_gamma=10, r2_
     r2_penalty = 0
 
     if r1_gamma != 0:
-        real_loss = tf.reduce_mean(real_logit)  # FUNIT = reduce_mean, StyleGAN = reduce_sum
+        # real_loss = tf.reduce_mean(real_logit)  # FUNIT = reduce_mean, StyleGAN = reduce_sum
+        real_loss = tf.reduce_sum(real_logit)
         real_grads = tf.gradients(real_loss, real_images)[0]
 
         r1_penalty = r1_gamma * tf.square(real_grads)
         # FUNIT didn't use 0.5
 
     if r2_gamma != 0:
-        fake_loss = tf.reduce_mean(fake_logit)  # FUNIT = reduce_mean, StyleGAN = reduce_sum
+        # fake_loss = tf.reduce_mean(fake_logit)  # FUNIT = reduce_mean, StyleGAN = reduce_sum
+        fake_loss = tf.reduce_sum(fake_logit)
         fake_grads = tf.gradients(fake_loss, fake_images)[0]
 
         r2_penalty = r2_gamma * tf.square(fake_grads)
@@ -305,76 +340,10 @@ def L1_loss(x, y):
 
     return loss
 
-"""
-# No use
-def discriminator_loss_(loss_func, real_logit, fake_logit):
-
-    real_loss = 0
-    fake_loss = 0
-
-    if loss_func.__contains__('wgan') :
-        real_loss = -tf.reduce_mean(real_logit)
-        fake_loss = tf.reduce_mean(fake_logit)
-
-    if loss_func == 'lsgan' :
-        real_loss = tf.reduce_mean(tf.squared_difference(real_logit, 1.0))
-        fake_loss = tf.reduce_mean(tf.square(fake_logit))
-
-    if loss_func == 'gan' or loss_func == 'dragan' :
-        real_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(real_logit), logits=real_logit))
-        fake_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(fake_logit), logits=fake_logit))
-
-    if loss_func == 'hinge' :
-        real_loss = tf.reduce_mean(relu(1.0 - real_logit))
-        fake_loss = tf.reduce_mean(relu(1.0 + fake_logit))
-
-
-
-    return real_loss + fake_loss
-
-def generator_loss_(loss_func, fake_logit):
-    fake_loss = 0
-
-    if loss_func.__contains__('wgan') :
-        fake_loss = -tf.reduce_mean(fake_logit)
-
-    if loss_func == 'lsgan' :
-        fake_loss = tf.reduce_mean(tf.squared_difference(fake_logit, 1.0))
-
-    if loss_func == 'gan' or loss_func == 'dragan' :
-        fake_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(fake_logit), logits=fake_logit))
-
-    if loss_func == 'hinge' :
-        fake_loss = -tf.reduce_mean(fake_logit)
-
-
-    return fake_loss
-
-def simple_gp_(real_logit, fake_logit, real_images, fake_images, r1_gamma=10, r2_gamma=0):
-    # Used in StyleGAN
-
-    r1_penalty = 0
-    r2_penalty = 0
-
-    if r1_gamma != 0:
-        real_loss = tf.reduce_mean(real_logit)  # FUNIT = reduce_mean, StyleGAN = reduce_sum
-        real_grads = tf.gradients(real_loss, real_images)[0]
-
-        r1_penalty = r1_gamma * tf.reduce_mean(tf.reduce_sum(tf.square(real_grads), axis=[1, 2, 3]))
-        # FUNIT didn't use 0.5
-
-    if r2_gamma != 0:
-        fake_loss = tf.reduce_mean(fake_logit)  # FUNIT = reduce_mean, StyleGAN = reduce_sum
-        fake_grads = tf.gradients(fake_loss, fake_images)[0]
-
-        r2_penalty = r2_gamma * tf.reduce_mean(tf.reduce_sum(tf.square(fake_grads), axis=[1, 2, 3]))
-        # FUNIT didn't use 0.5
-
-    return r1_penalty + r2_penalty
-
-
-def L1_loss_(x, y):
-    loss = tf.reduce_mean(tf.abs(x - y))
-
-    return loss
-"""
+def lr_mult(alpha):
+    @tf.custom_gradient
+    def _lr_mult(x):
+        def grad(dy):
+            return dy * alpha * tf.ones_like(x)
+        return x, grad
+    return _lr_mult

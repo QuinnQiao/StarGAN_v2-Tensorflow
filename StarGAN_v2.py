@@ -183,12 +183,13 @@ class StarGAN_v2() :
         with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
             x = latent_z
 
-            for i in range(self.n_layer_1 + self.n_layer_2):
-                x = fully_connected(x, units=channel, use_bias=True, scope='fc_' + str(i))
+            # for i in range(self.n_layer_1 + self.n_layer_2):
+            for i in range(self.n_layer_1 + self.n_layer_2 + 1):
+                x = fully_connected(x, units=channel, use_bias=True, lr_mul=0.01, scope='fc_' + str(i))
                 x = relu(x)
 
             for i in range(self.c_dim) :
-                style = fully_connected(x, units=64, use_bias=True, scope='style_fc_' + str(i))
+                style = fully_connected(x, units=64, use_bias=True, lr_mul=0.01, scope='style_fc_' + str(i))
                 style_list.append(style)
 
             return style_list # [c_dim,], style_list[i] = [bs, 64]
@@ -317,7 +318,6 @@ class StarGAN_v2() :
 
                         d_adv_loss = None
                         d_simple_gp = None
-                        d_gp = None
 
                         for each_bs in range(self.batch_size) :
                             """ Define Generator, Discriminator """
@@ -346,10 +346,6 @@ class StarGAN_v2() :
                             fake_logit = tf.gather(self.discriminator(x_fake), label_trg_each)
 
                             """ Define loss """
-                            if self.gan_type.__contains__('wgan') or self.gan_type == 'dragan':
-                                GP = self.gradient_panalty(real=x_real_each, fake=x_fake, real_label=label_org_each)
-                            else:
-                                GP = tf.constant([0], tf.float32)
 
                             if each_bs == 0 :
                                 g_adv_loss = self.adv_weight * generator_loss(self.gan_type, fake_logit)
@@ -359,7 +355,6 @@ class StarGAN_v2() :
 
                                 d_adv_loss = self.adv_weight * discriminator_loss(self.gan_type, real_logit, fake_logit)
                                 d_simple_gp = self.adv_weight * simple_gp(real_logit, fake_logit, x_real_each, x_fake, r1_gamma=self.r1_weight, r2_gamma=0.0)
-                                d_gp = self.adv_weight * GP
 
                             else :
                                 g_adv_loss = tf.concat([g_adv_loss, self.adv_weight * generator_loss(self.gan_type, fake_logit)], axis=0)
@@ -369,7 +364,6 @@ class StarGAN_v2() :
 
                                 d_adv_loss = tf.concat([d_adv_loss, self.adv_weight * discriminator_loss(self.gan_type, real_logit, fake_logit)], axis=0)
                                 d_simple_gp = tf.concat([d_simple_gp, self.adv_weight * simple_gp(real_logit, fake_logit, x_real_each, x_fake, r1_gamma=self.r1_weight, r2_gamma=0.0)], axis=0)
-                                d_gp = tf.concat([d_gp, self.adv_weight * GP], axis=0)
 
 
                         g_adv_loss = tf.reduce_mean(g_adv_loss)
@@ -379,10 +373,9 @@ class StarGAN_v2() :
 
                         d_adv_loss = tf.reduce_mean(d_adv_loss)
                         d_simple_gp = tf.reduce_mean(tf.reduce_sum(d_simple_gp, axis=[1, 2, 3]))
-                        d_gp = tf.reduce_mean(d_gp)
 
                         g_loss = g_adv_loss + g_sty_recon_loss - g_sty_diverse_loss + g_cyc_loss
-                        d_loss = d_adv_loss + d_simple_gp + d_gp
+                        d_loss = d_adv_loss + d_simple_gp
 
                         g_adv_loss_per_gpu.append(g_adv_loss)
                         g_sty_recon_loss_per_gpu.append(g_sty_recon_loss)
@@ -412,30 +405,36 @@ class StarGAN_v2() :
             D_vars = [var for var in t_vars if 'discriminator' in var.name]
 
             if self.gpu_num == 1 :
-                prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars)
-                prev_e_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=E_vars)
-                prev_f_optimizer = tf.train.AdamOptimizer(self.lr * 0.01, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=F_vars)
+                # prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars)
+                # prev_e_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=E_vars)
+                # prev_f_optimizer = tf.train.AdamOptimizer(self.lr * 0.01, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=F_vars)
+                prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars+E_vars+F_vars)
 
                 self.d_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.d_loss, var_list=D_vars)
 
             else :
-                prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars,
+                # prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars,
+                #                                                                                  colocate_gradients_with_ops=True)
+                # prev_e_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss,
+                #                                                                                  var_list=E_vars,
+                #                                                                                  colocate_gradients_with_ops=True)
+                # prev_f_optimizer = tf.train.AdamOptimizer(self.lr * 0.01, beta1=0, beta2=0.99).minimize(self.g_loss,
+                #                                                                                         var_list=F_vars,
+                #                                                                                         colocate_gradients_with_ops=True)
+                prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, 
+                                                                                                 var_list=G_vars+E_vars+F_vars,
                                                                                                  colocate_gradients_with_ops=True)
-                prev_e_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss,
-                                                                                                 var_list=E_vars,
-                                                                                                 colocate_gradients_with_ops=True)
-                prev_f_optimizer = tf.train.AdamOptimizer(self.lr * 0.01, beta1=0, beta2=0.99).minimize(self.g_loss,
-                                                                                                        var_list=F_vars,
-                                                                                                        colocate_gradients_with_ops=True)
 
                 self.d_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.d_loss,
                                                                                                  var_list=D_vars,
                                                                                                  colocate_gradients_with_ops=True)
 
-            with tf.control_dependencies([prev_g_optimizer, prev_e_optimizer, prev_f_optimizer]):
-                self.g_optimizer = self.ema.apply(G_vars)
-                self.e_optimizer = self.ema.apply(E_vars)
-                self.f_optimizer = self.ema.apply(F_vars)
+            # with tf.control_dependencies([prev_g_optimizer, prev_e_optimizer, prev_f_optimizer]):
+                # self.g_optimizer = self.ema.apply(G_vars)
+                # self.e_optimizer = self.ema.apply(E_vars)
+                # self.f_optimizer = self.ema.apply(F_vars)
+            with tf.control_dependencies([prev_g_optimizer]):
+                self.g_optimizer = self.ema.apply(G_vars+E_vars+F_vars)
 
             """" Summary """
             self.Generator_loss = tf.summary.scalar("g_loss", self.g_loss)
@@ -547,17 +546,9 @@ class StarGAN_v2() :
                 decay_start_step = self.decay_iter
 
                 if current_step < decay_start_step :
-                    # lr = self.init_lr
-                    ds_w = self.ds_weight
+                    ds_w = self.ds_weight * (1. - current_step / decay_start_step)
                 else :
-                    # lr = self.init_lr * (total_step - current_step) / (total_step - decay_start_step)
-                    ds_w = self.ds_weight * (total_step - current_step) / (total_step - decay_start_step)
-
-                """ half decay """
-                """
-                if idx > 0 and (idx % decay_start_step) == 0 :
-                    lr = self.init_lr * pow(0.5, idx // decay_start_step)
-                """
+                    ds_w = 0.
 
             train_feed_dict = {
                 self.lr : lr,
@@ -571,8 +562,7 @@ class StarGAN_v2() :
             # Update G
             g_loss = None
             if (counter - 1) % self.n_critic == 0 :
-                real_images, fake_images, _, _, _, g_loss, summary_str = self.sess.run([self.x_real, self.x_fake_list,
-                                                                                  self.g_optimizer, self.e_optimizer, self.f_optimizer,
+                real_images, fake_images, _, g_loss, summary_str = self.sess.run([self.x_real, self.x_fake_list, self.g_optimizer,
                                                                                   self.g_loss, self.g_summary_loss], feed_dict = train_feed_dict)
                 self.writer.add_summary(summary_str, counter)
                 past_g_loss = g_loss
