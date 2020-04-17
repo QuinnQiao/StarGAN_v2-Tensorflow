@@ -84,7 +84,7 @@ def save_images(images, size, image_path):
     return imsave(inverse_transform(images), size, image_path)
 
 def inverse_transform(images):
-    return ((images+1.) / 2) * 255.0
+    return (tf.clip_by_value(images, -1, 1) + 1.) / 2 * 255.0
 
 
 def imsave(images, size, path):

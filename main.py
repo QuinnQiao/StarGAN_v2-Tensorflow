@@ -9,6 +9,7 @@ def parse_args():
     parser.add_argument('--phase', type=str, default='train', help='train or test or refer_test ?')
     parser.add_argument('--dataset', type=str, default='celebA-HQ_gender', help='dataset_name')
     parser.add_argument('--refer_img_path', type=str, default='refer_img.jpg', help='reference image path')
+    parser.add_argument('--refer_img_label', type=int, help='the label of the reference image')
 
     parser.add_argument('--iteration', type=int, default=100000, help='The number of training iterations')
 

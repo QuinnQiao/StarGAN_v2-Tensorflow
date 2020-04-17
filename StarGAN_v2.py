@@ -16,10 +16,8 @@ class StarGAN_v2() :
         self.sample_dir = args.sample_dir
         self.result_dir = args.result_dir
         self.log_dir = args.log_dir
-        # self.dataset_name = args.dataset
-        # self.dataset_path = os.path.join('./dataset', self.dataset_name)
-        self.dataset_name = args.dataset.split('/')[-1]
-        self.dataset_path = args.dataset
+        self.dataset_name = os.path.basename(args.dataset)
+        self.dataset_base = args.dataset
         self.augment_flag = args.augment_flag
 
         self.decay_flag = args.decay_flag
@@ -38,11 +36,12 @@ class StarGAN_v2() :
         self.ema_decay = args.ema_decay
         self.ch = args.ch
 
-        self.dataset_path = os.path.join(self.dataset_path, 'train')
+        self.dataset_path = os.path.join(self.dataset_base, 'train')
         self.label_list = [os.path.basename(x) for x in glob(self.dataset_path + '/*')]
         self.c_dim = len(self.label_list)
 
         self.refer_img_path = args.refer_img_path
+        self.refer_img_label = args.refer_img_label
 
         """ Weight """
         self.adv_weight = args.adv_weight
@@ -482,7 +481,8 @@ class StarGAN_v2() :
             self.refer_image = tf.placeholder(tf.float32, [1, self.img_height, self.img_width, self.img_ch], name='refer_image')
 
 
-            label_fix_list = tf.constant([idx for idx in range(self.c_dim)])
+            # label_fix_list = tf.constant([idx for idx in range(self.c_dim)])
+            label_fix_list = tf.constant([self.refer_img_label])
 
             self.refer_fake_image = tf.map_fn(
                 lambda c : return_g_images(self.generator,
@@ -638,8 +638,7 @@ class StarGAN_v2() :
     def test(self):
         tf.global_variables_initializer().run()
         # test_files = glob('./dataset/{}/{}/*.jpg'.format(self.dataset_name, 'test')) + glob('./dataset/{}/{}/*.png'.format(self.dataset_name, 'test'))
-        dataset = self.dataset_path[:-5]
-        test_files = glob(os.path.join(dataset, 'test', '*.jpg')) + glob(os.path.join(dataset, 'test', '*.png'))
+        test_files = glob(os.path.join(self.dataset_base, 'test', '*.jpg')) + glob(os.path.join(self.dataset_base, 'test', '*.png'))
         t_vars = tf.trainable_variables()
         G_vars = [var for var in t_vars if 'generator' in var.name or 'encoder' in var.name or 'mapping' in var.name]
 
@@ -660,10 +659,10 @@ class StarGAN_v2() :
             print(" [!] Load failed...")
 
         # write html for visual comparison
-        index_path = os.path.join(self.result_dir, 'index.html')
-        index = open(index_path, 'w')
-        index.write("<html><body><table><tr>")
-        index.write("<th>name</th><th>input</th><th>output</th></tr>")
+        # index_path = os.path.join(self.result_dir, 'index.html')
+        # index = open(index_path, 'w')
+        # index.write("<html><body><table><tr>")
+        # index.write("<th>name</th><th>input</th><th>output</th></tr>")
 
         for sample_file in tqdm(test_files):
             print("Processing image: " + sample_file)
@@ -686,22 +685,22 @@ class StarGAN_v2() :
 
             save_images(merge_x, [1, 1], image_path)
 
-            index.write("<td>%s</td>" % os.path.basename(image_path))
-            index.write("<td><img src='%s' width='%d' height='%d'></td>" % (sample_file if os.path.isabs(sample_file) else (
-                        '../..' + os.path.sep + sample_file), self.img_width, self.img_height))
+            # index.write("<td>%s</td>" % os.path.basename(image_path))
+            # index.write("<td><img src='%s' width='%d' height='%d'></td>" % (sample_file if os.path.isabs(sample_file) else (
+            #             '../..' + os.path.sep + sample_file), self.img_width, self.img_height))
 
-            index.write("<td><img src='%s' width='%d' height='%d'></td>" % (image_path if os.path.isabs(image_path) else (
-                        '../..' + os.path.sep + image_path), self.img_width * self.c_dim, self.img_height * self.num_style))
-            index.write("</tr>")
+            # index.write("<td><img src='%s' width='%d' height='%d'></td>" % (image_path if os.path.isabs(image_path) else (
+            #             '../..' + os.path.sep + image_path), self.img_width * self.c_dim, self.img_height * self.num_style))
+            # index.write("</tr>")
 
-        index.close()
+        # index.close()
 
     def refer_test(self):
         tf.global_variables_initializer().run()
-        dataset = self.dataset_path[:-5]
-        test_files = glob(os.path.join(dataset, 'test', '*.jpg')) + glob(os.path.join(dataset, 'test', '*.png'))
+        test_files = glob(os.path.join(self.dataset_base, 'test', '*.jpg')) + glob(os.path.join(self.dataset_base, 'test', '*.png'))
         
         refer_image = load_test_image(self.refer_img_path, self.img_width, self.img_height, self.img_ch)
+        re
 
         t_vars = tf.trainable_variables()
         G_vars = [var for var in t_vars if 'generator' in var.name or 'encoder' in var.name or 'mapping' in var.name]
@@ -726,10 +725,10 @@ class StarGAN_v2() :
             print(" [!] Load failed...")
 
         # write html for visual comparison
-        index_path = os.path.join(self.result_dir, 'index.html')
-        index = open(index_path, 'w')
-        index.write("<html><body><table><tr>")
-        index.write("<th>name</th><th>input</th><th>output</th></tr>")
+        # index_path = os.path.join(self.result_dir, 'index.html')
+        # index = open(index_path, 'w')
+        # index.write("<html><body><table><tr>")
+        # index.write("<th>name</th><th>input</th><th>output</th></tr>")
 
         for sample_file in tqdm(test_files):
             print("Processing image: " + sample_file)
@@ -744,12 +743,12 @@ class StarGAN_v2() :
 
             save_images(merge_x, [1, 1], image_path)
 
-            index.write("<td>%s</td>" % os.path.basename(image_path))
-            index.write("<td><img src='%s' width='%d' height='%d'></td>" % (sample_file if os.path.isabs(sample_file) else (
-                        '../../..' + os.path.sep + sample_file), self.img_width, self.img_height))
+        #     index.write("<td>%s</td>" % os.path.basename(image_path))
+        #     index.write("<td><img src='%s' width='%d' height='%d'></td>" % (sample_file if os.path.isabs(sample_file) else (
+        #                 '../../..' + os.path.sep + sample_file), self.img_width, self.img_height))
 
-            index.write("<td><img src='%s' width='%d' height='%d'></td>" % (image_path if os.path.isabs(image_path) else (
-                        '../../..' + os.path.sep + image_path), self.img_width * self.c_dim, self.img_height))
-            index.write("</tr>")
+        #     index.write("<td><img src='%s' width='%d' height='%d'></td>" % (image_path if os.path.isabs(image_path) else (
+        #                 '../../..' + os.path.sep + image_path), self.img_width * self.c_dim, self.img_height))
+        #     index.write("</tr>")
 
-        index.close()
+        # index.close()
