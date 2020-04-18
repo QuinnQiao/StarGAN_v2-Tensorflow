@@ -700,7 +700,6 @@ class StarGAN_v2() :
         test_files = glob(os.path.join(self.dataset_base, 'test', '*.jpg')) + glob(os.path.join(self.dataset_base, 'test', '*.png'))
         
         refer_image = load_test_image(self.refer_img_path, self.img_width, self.img_height, self.img_ch)
-        re
 
         t_vars = tf.trainable_variables()
         G_vars = [var for var in t_vars if 'generator' in var.name or 'encoder' in var.name or 'mapping' in var.name]

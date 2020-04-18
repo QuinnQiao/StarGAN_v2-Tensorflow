@@ -339,11 +339,3 @@ def L1_loss(x, y):
     loss = tf.abs(x - y)
 
     return loss
-
-def lr_mult(alpha):
-    @tf.custom_gradient
-    def _lr_mult(x):
-        def grad(dy):
-            return dy * alpha * tf.ones_like(x)
-        return x, grad
-    return _lr_mult

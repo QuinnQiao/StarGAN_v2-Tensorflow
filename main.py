@@ -94,7 +94,6 @@ def main():
     if args is None:
       exit()
 
-    import os
     os.environ['CUDA_VISIBLE_DEVICES'] = args.visible_gpu
 
     # open session
