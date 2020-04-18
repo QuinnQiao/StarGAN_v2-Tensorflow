@@ -169,7 +169,7 @@ class StarGAN_v2() :
             x = conv(x, channel, kernel=kernel_size, stride=1, use_bias=True, scope='conv_g_kernel')
             x = relu(x)
 
-            bs = style.shape[0]
+            bs = x_init.shape[0]
             style = fully_connected(x, units=64 * self.c_dim, use_bias=True, scope='style_fc')
             style = tf.reshape(style, (bs, self.c_dim, 64)) # bs * c_dim * 64
 
@@ -444,7 +444,7 @@ class StarGAN_v2() :
                 self.x_fake_list.append(tf.map_fn(
                     lambda c: return_g_images(self.generator,
                                               first_x_real,
-                                              tf.gather(self.mapping_network(random_style_code), c)),
+                                              self.mapping_network(random_style_code, tf.reshape(c, (1,1)))),
                     label_fix_list, dtype=tf.float32))
 
         elif self.phase == 'refer_test':
