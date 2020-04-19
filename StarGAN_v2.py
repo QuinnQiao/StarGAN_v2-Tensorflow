@@ -498,13 +498,13 @@ class StarGAN_v2() :
                 return x
 
             self.custom_image = tf.placeholder(tf.float32, [1, self.img_height, self.img_width, self.img_ch], name='custom_image')
+            self.random_style_code = tf.placeholder(tf.float32, [1, self.style_dim])
             label_fix_list = tf.constant([idx for idx in range(self.c_dim)])
 
-            random_style_code = tf.truncated_normal(shape=[1, self.style_dim])
             self.custom_fake_image = tf.map_fn(
                 lambda c : return_g_images(self.generator,
                                            self.custom_image,
-                                           tf.gather(self.mapping_network(random_style_code), c)),
+                                           tf.gather(self.mapping_network(self.random_style_code), c)),
                 label_fix_list, dtype=tf.float32)
 
 
@@ -653,6 +653,8 @@ class StarGAN_v2() :
         self.result_dir = os.path.join(self.result_dir, self.model_dir)
         check_folder(self.result_dir)
 
+        random_style_codes = np.random.randn(self.num_style, 1, self.style_dim)
+
         if could_load :
             print(" [*] Load SUCCESS")
         else :
@@ -672,7 +674,8 @@ class StarGAN_v2() :
             merge_x = None
 
             for i in range(self.num_style) :
-                fake_img = self.sess.run(self.custom_fake_image, feed_dict={self.custom_image: sample_image})
+                random_style_code = random_style_codes[i]
+                fake_img = self.sess.run(self.custom_fake_image, feed_dict={self.custom_image: sample_image, self.random_style_code: random_style_code})
                 fake_img = np.transpose(fake_img, axes=[1, 0, 2, 3, 4])[0]
 
                 if i == 0:

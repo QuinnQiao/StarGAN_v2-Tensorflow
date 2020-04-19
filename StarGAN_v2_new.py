@@ -464,7 +464,7 @@ class StarGAN_v2() :
             self.refer_fake_image = tf.map_fn(
                 lambda c : return_g_images(self.generator,
                                            self.custom_image,
-                                           tf.gather(self.style_encoder(self.refer_image, tf.reshape(c, (1,1))))),
+                                           self.style_encoder(self.refer_image, tf.reshape(c, (1,1)))),
                 label_fix_list, dtype=tf.float32)
 
         else :
@@ -481,7 +481,7 @@ class StarGAN_v2() :
             self.custom_fake_image = tf.map_fn(
                 lambda c : return_g_images(self.generator,
                                            self.custom_image,
-                                           tf.gather(self.mapping_network(self.random_style_code), tf.reshape(c, (1,1)))),
+                                           self.mapping_network(self.random_style_code, tf.reshape(c, (1,1)))),
                 label_fix_list, dtype=tf.float32)
 
 
