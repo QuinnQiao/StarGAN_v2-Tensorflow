@@ -272,7 +272,8 @@ class StarGAN_v2() :
         x_real_gpu_split = tf.split(self.x_real, num_or_size_splits=self.gpu_num, axis=0)
         label_org_gpu_split = tf.split(label_org, num_or_size_splits=self.gpu_num, axis=0)
         label_trg_gpu_split = tf.split(label_trg, num_or_size_splits=self.gpu_num, axis=0)
-
+        random_style_code_split = tf.split(tf.random_normal(shape=[self.batch_size * self.gpu_num, self.style_dim]), 
+                                            num_or_size_splits=self.gpu_num, axis=0)
 
         ##############################################################################################################################
         d_adv_loss_per_gpu1 = []
@@ -285,10 +286,9 @@ class StarGAN_v2() :
                     x_real_each = x_real_gpu_split[gpu_id] # [bs. h, w, 3]
                     label_org_each = label_org_gpu_split[gpu_id] # [bs, 1]
                     label_trg_each = label_trg_gpu_split[gpu_id]
+                    random_style_code = random_style_code_split[gpu_num]
 
                     ''' Define Generator, Discriminator '''
-
-                    random_style_code = tf.random_normal(shape=[self.batch_size, self.style_dim])
 
                     random_style = self.mapping_network(random_style_code, label_trg_each)
 
@@ -321,6 +321,7 @@ class StarGAN_v2() :
                     x_real_split = tf.split(x_real_gpu_split[gpu_id], num_or_size_splits=self.batch_size, axis=0)
                     label_org_split = tf.split(label_org_gpu_split[gpu_id], num_or_size_splits=self.batch_size, axis=0)
                     label_trg_split = tf.split(label_trg_gpu_split[gpu_id], num_or_size_splits=self.batch_size, axis=0)
+                    random_style_code_split_gpu = tf.split(random_style_code_split[gpu_id], num_or_size_splits=self.batch_size, axis=0)
 
                     d_adv_loss = None
                     d_simple_gp = None
@@ -330,8 +331,7 @@ class StarGAN_v2() :
                         x_real_each = x_real_split[each_bs] # [1, 256, 256, 3]
                         label_org_each = label_org_split[each_bs]
                         label_trg_each = label_trg_split[each_bs]
-
-                        random_style_code = tf.random_normal(shape=[1, self.style_dim])
+                        random_style_code = random_style_code_split_gpu[each_bs]
 
                         random_style = self.mapping_network(random_style_code, label_trg_each)
 
