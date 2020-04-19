@@ -464,7 +464,7 @@ class StarGAN_v2() :
             self.refer_fake_image = tf.map_fn(
                 lambda c : return_g_images(self.generator,
                                            self.custom_image,
-                                           tf.gather(self.style_encoder(self.refer_image), c)),
+                                           tf.gather(self.style_encoder(self.refer_image, tf.reshape(c, (1,1))))),
                 label_fix_list, dtype=tf.float32)
 
         else :
@@ -475,13 +475,13 @@ class StarGAN_v2() :
                 return x
 
             self.custom_image = tf.placeholder(tf.float32, [1, self.img_height, self.img_width, self.img_ch], name='custom_image')
+            self.random_style_code = tf.placeholder(tf.float32, [1, self.style_dim], name='random_style_code')
             label_fix_list = tf.constant([idx for idx in range(self.c_dim)])
 
-            random_style_code = tf.truncated_normal(shape=[1, self.style_dim])
             self.custom_fake_image = tf.map_fn(
                 lambda c : return_g_images(self.generator,
                                            self.custom_image,
-                                           tf.gather(self.mapping_network(random_style_code), c)),
+                                           tf.gather(self.mapping_network(self.random_style_code), tf.reshape(c, (1,1)))),
                 label_fix_list, dtype=tf.float32)
 
 
@@ -635,11 +635,7 @@ class StarGAN_v2() :
         else :
             print(" [!] Load failed...")
 
-        # write html for visual comparison
-        # index_path = os.path.join(self.result_dir, 'index.html')
-        # index = open(index_path, 'w')
-        # index.write("<html><body><table><tr>")
-        # index.write("<th>name</th><th>input</th><th>output</th></tr>")
+        random_style_codes = np.random.randn(self.num_style, 1, self.style_dim)
 
         for sample_file in tqdm(test_files):
             print("Processing image: " + sample_file)
@@ -649,7 +645,8 @@ class StarGAN_v2() :
             merge_x = None
 
             for i in range(self.num_style) :
-                fake_img = self.sess.run(self.custom_fake_image, feed_dict={self.custom_image: sample_image})
+                random_style_code = random_style_codes[i]
+                fake_img = self.sess.run(self.custom_fake_image, feed_dict={self.custom_image: sample_image, self.random_style_code: random_style_code})
                 fake_img = np.transpose(fake_img, axes=[1, 0, 2, 3, 4])[0]
 
                 if i == 0:
@@ -662,15 +659,6 @@ class StarGAN_v2() :
 
             save_images(merge_x, [1, 1], image_path)
 
-            # index.write("<td>%s</td>" % os.path.basename(image_path))
-            # index.write("<td><img src='%s' width='%d' height='%d'></td>" % (sample_file if os.path.isabs(sample_file) else (
-            #             '../..' + os.path.sep + sample_file), self.img_width, self.img_height))
-
-            # index.write("<td><img src='%s' width='%d' height='%d'></td>" % (image_path if os.path.isabs(image_path) else (
-            #             '../..' + os.path.sep + image_path), self.img_width * self.c_dim, self.img_height * self.num_style))
-            # index.write("</tr>")
-
-        # index.close()
 
     def refer_test(self):
         tf.global_variables_initializer().run()
@@ -700,12 +688,6 @@ class StarGAN_v2() :
         else :
             print(" [!] Load failed...")
 
-        # write html for visual comparison
-        # index_path = os.path.join(self.result_dir, 'index.html')
-        # index = open(index_path, 'w')
-        # index.write("<html><body><table><tr>")
-        # index.write("<th>name</th><th>input</th><th>output</th></tr>")
-
         for sample_file in tqdm(test_files):
             print("Processing image: " + sample_file)
             sample_image = load_test_image(sample_file, self.img_width, self.img_height, self.img_ch)
@@ -718,13 +700,3 @@ class StarGAN_v2() :
             merge_x = np.expand_dims(merge_x, axis=0)
 
             save_images(merge_x, [1, 1], image_path)
-
-        #     index.write("<td>%s</td>" % os.path.basename(image_path))
-        #     index.write("<td><img src='%s' width='%d' height='%d'></td>" % (sample_file if os.path.isabs(sample_file) else (
-        #                 '../../..' + os.path.sep + sample_file), self.img_width, self.img_height))
-
-        #     index.write("<td><img src='%s' width='%d' height='%d'></td>" % (image_path if os.path.isabs(image_path) else (
-        #                 '../../..' + os.path.sep + image_path), self.img_width * self.c_dim, self.img_height))
-        #     index.write("</tr>")
-
-        # index.close()
