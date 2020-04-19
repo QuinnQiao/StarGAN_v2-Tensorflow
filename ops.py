@@ -228,7 +228,7 @@ def instance_norm(x, scope='instance_norm'):
 
 def adaptive_instance_norm(content, gamma, beta, epsilon=1e-5):
 
-    c_mean, c_var = tf.nn.moments(content, axes=[1, 2], keep_dims=True)
+    c_mean, c_var = tf.nn.moments(content, axes=[1, 2], keep_dims=True) # NHWC
     c_std = tf.sqrt(c_var + epsilon)
 
     return gamma * ((content - c_mean) / c_std) + beta

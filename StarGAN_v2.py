@@ -231,33 +231,6 @@ class StarGAN_v2() :
     # Model
     ##################################################################################
 
-    def gradient_panalty(self, real, fake, real_label, scope="discriminator"):
-        if self.gan_type.__contains__('dragan'):
-            eps = tf.random_uniform(shape=tf.shape(real), minval=0., maxval=1.)
-            _, x_var = tf.nn.moments(real, axes=[0, 1, 2, 3])
-            x_std = tf.sqrt(x_var)  # magnitude of noise decides the size of local region
-
-            fake = real + 0.5 * x_std * eps
-
-        alpha = tf.random_uniform(shape=[self.batch_size, 1, 1, 1], minval=0., maxval=1.)
-        interpolated = real + alpha * (fake - real)
-
-        logits = tf.gather(self.discriminator(interpolated, scope=scope), real_label)
-
-
-        grad = tf.gradients(logits, interpolated)[0] # gradient of D(interpolated)
-        grad_norm = tf.norm(flatten(grad), axis=-1) # l2 norm
-
-        # WGAN - LP
-        GP = 0
-        if self.gan_type == 'wgan-lp' :
-            GP = self.gp_weight * tf.square(tf.maximum(0.0, grad_norm - 1.))
-
-        elif self.gan_type == 'wgan-gp' or self.gan_type == 'dragan':
-            GP = self.gp_weight * tf.square(grad_norm - 1.)
-
-        return GP
-
     def build_model(self):
 
         self.ema = tf.train.ExponentialMovingAverage(decay=self.ema_decay)
@@ -404,22 +377,11 @@ class StarGAN_v2() :
             D_vars = [var for var in t_vars if 'discriminator' in var.name]
 
             if self.gpu_num == 1 :
-                # prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars)
-                # prev_e_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=E_vars)
-                # prev_f_optimizer = tf.train.AdamOptimizer(self.lr * 0.01, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=F_vars)
                 prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars+E_vars+F_vars)
 
                 self.d_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.d_loss, var_list=D_vars)
 
             else :
-                # prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars,
-                #                                                                                  colocate_gradients_with_ops=True)
-                # prev_e_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss,
-                #                                                                                  var_list=E_vars,
-                #                                                                                  colocate_gradients_with_ops=True)
-                # prev_f_optimizer = tf.train.AdamOptimizer(self.lr * 0.01, beta1=0, beta2=0.99).minimize(self.g_loss,
-                #                                                                                         var_list=F_vars,
-                #                                                                                         colocate_gradients_with_ops=True)
                 prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, 
                                                                                                  var_list=G_vars+E_vars+F_vars,
                                                                                                  colocate_gradients_with_ops=True)
@@ -498,7 +460,7 @@ class StarGAN_v2() :
                 return x
 
             self.custom_image = tf.placeholder(tf.float32, [1, self.img_height, self.img_width, self.img_ch], name='custom_image')
-            self.random_style_code = tf.placeholder(tf.float32, [1, self.style_dim])
+            self.random_style_code = tf.placeholder(tf.float32, [1, self.style_dim], name='random_style_code')
             label_fix_list = tf.constant([idx for idx in range(self.c_dim)])
 
             self.custom_fake_image = tf.map_fn(
@@ -637,7 +599,6 @@ class StarGAN_v2() :
 
     def test(self):
         tf.global_variables_initializer().run()
-        # test_files = glob('./dataset/{}/{}/*.jpg'.format(self.dataset_name, 'test')) + glob('./dataset/{}/{}/*.png'.format(self.dataset_name, 'test'))
         test_files = glob(os.path.join(self.dataset_base, 'test', '*.jpg')) + glob(os.path.join(self.dataset_base, 'test', '*.png'))
         t_vars = tf.trainable_variables()
         G_vars = [var for var in t_vars if 'generator' in var.name or 'encoder' in var.name or 'mapping' in var.name]
@@ -659,12 +620,6 @@ class StarGAN_v2() :
             print(" [*] Load SUCCESS")
         else :
             print(" [!] Load failed...")
-
-        # write html for visual comparison
-        # index_path = os.path.join(self.result_dir, 'index.html')
-        # index = open(index_path, 'w')
-        # index.write("<html><body><table><tr>")
-        # index.write("<th>name</th><th>input</th><th>output</th></tr>")
 
         for sample_file in tqdm(test_files):
             print("Processing image: " + sample_file)
@@ -688,15 +643,6 @@ class StarGAN_v2() :
 
             save_images(merge_x, [1, 1], image_path)
 
-            # index.write("<td>%s</td>" % os.path.basename(image_path))
-            # index.write("<td><img src='%s' width='%d' height='%d'></td>" % (sample_file if os.path.isabs(sample_file) else (
-            #             '../..' + os.path.sep + sample_file), self.img_width, self.img_height))
-
-            # index.write("<td><img src='%s' width='%d' height='%d'></td>" % (image_path if os.path.isabs(image_path) else (
-            #             '../..' + os.path.sep + image_path), self.img_width * self.c_dim, self.img_height * self.num_style))
-            # index.write("</tr>")
-
-        # index.close()
 
     def refer_test(self):
         tf.global_variables_initializer().run()
@@ -726,12 +672,6 @@ class StarGAN_v2() :
         else :
             print(" [!] Load failed...")
 
-        # write html for visual comparison
-        # index_path = os.path.join(self.result_dir, 'index.html')
-        # index = open(index_path, 'w')
-        # index.write("<html><body><table><tr>")
-        # index.write("<th>name</th><th>input</th><th>output</th></tr>")
-
         for sample_file in tqdm(test_files):
             print("Processing image: " + sample_file)
             sample_image = load_test_image(sample_file, self.img_width, self.img_height, self.img_ch)
@@ -740,17 +680,8 @@ class StarGAN_v2() :
             fake_img = self.sess.run(self.refer_fake_image, feed_dict={self.custom_image: sample_image, self.refer_image: refer_image})
             fake_img = np.transpose(fake_img, axes=[1, 0, 2, 3, 4])[0]
 
-            merge_x = return_images(fake_img, [1, self.c_dim]) # [self.img_height, self.img_width * self.c_dim, self.img_ch]
+            # merge_x = return_images(fake_img, [1, self.c_dim]) # [self.img_height, self.img_width * self.c_dim, self.img_ch]
+            merge_x = return_images(fake_img, [1, 1])
             merge_x = np.expand_dims(merge_x, axis=0)
 
             save_images(merge_x, [1, 1], image_path)
-
-        #     index.write("<td>%s</td>" % os.path.basename(image_path))
-        #     index.write("<td><img src='%s' width='%d' height='%d'></td>" % (sample_file if os.path.isabs(sample_file) else (
-        #                 '../../..' + os.path.sep + sample_file), self.img_width, self.img_height))
-
-        #     index.write("<td><img src='%s' width='%d' height='%d'></td>" % (image_path if os.path.isabs(image_path) else (
-        #                 '../../..' + os.path.sep + image_path), self.img_width * self.c_dim, self.img_height))
-        #     index.write("</tr>")
-
-        # index.close()

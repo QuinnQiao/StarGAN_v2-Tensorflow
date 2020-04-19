@@ -174,6 +174,7 @@ class StarGAN_v2() :
             style = tf.reshape(style, (bs, self.c_dim, 64)) # bs * c_dim * 64
 
             index = tf.reshape(tf.range(bs), (bs, 1))
+            label = tf.reshape(label, (bs, 1))
             index = tf.concat([index, label], axis=1) # bs * 2
 
             return tf.gather_nd(style, index) # bs * 64
@@ -193,6 +194,7 @@ class StarGAN_v2() :
             style = tf.reshape(style, (bs, self.c_dim, 64)) # bs * c_dim * 64
 
             index = tf.reshape(tf.range(bs), (bs, 1))
+            label = tf.reshape(label, (bs, 1))
             index = tf.concat([index, label], axis=1) # bs * 2
 
             return tf.gather_nd(style, index) # bs * 64
@@ -226,42 +228,17 @@ class StarGAN_v2() :
 
             bs = x_init.shape[0]
             logit = fully_connected(x, units=self.c_dim, use_bias=True, scope='dis_logit_fc') # bs * c_dim
+            logit = tf.reshape(logit, (bs, self.c_dim, 1))
 
             index = tf.reshape(tf.range(bs), (bs, 1))
+            label = tf.reshape(label, (bs, 1))
             index = tf.concat([index, label], axis=1) # bs * 2
 
-            return tf.reshape(tf.gather_nd(logit, index), (bs, 1))
+            return tf.gather_nd(logit, index)
 
     ##################################################################################
     # Model
     ##################################################################################
-
-    def gradient_panalty(self, real, fake, real_label, scope="discriminator"):
-        if self.gan_type.__contains__('dragan'):
-            eps = tf.random_uniform(shape=tf.shape(real), minval=0., maxval=1.)
-            _, x_var = tf.nn.moments(real, axes=[0, 1, 2, 3])
-            x_std = tf.sqrt(x_var)  # magnitude of noise decides the size of local region
-
-            fake = real + 0.5 * x_std * eps
-
-        alpha = tf.random_uniform(shape=[self.batch_size, 1, 1, 1], minval=0., maxval=1.)
-        interpolated = real + alpha * (fake - real)
-
-        logits = tf.gather(self.discriminator(interpolated, scope=scope), real_label)
-
-
-        grad = tf.gradients(logits, interpolated)[0] # gradient of D(interpolated)
-        grad_norm = tf.norm(flatten(grad), axis=-1) # l2 norm
-
-        # WGAN - LP
-        GP = 0
-        if self.gan_type == 'wgan-lp' :
-            GP = self.gp_weight * tf.square(tf.maximum(0.0, grad_norm - 1.))
-
-        elif self.gan_type == 'wgan-gp' or self.gan_type == 'dragan':
-            GP = self.gp_weight * tf.square(grad_norm - 1.)
-
-        return GP
 
     def build_model(self):
 
@@ -310,9 +287,11 @@ class StarGAN_v2() :
                 with tf.device(tf.DeviceSpec(device_type="GPU", device_index=gpu_id)):
                     with tf.variable_scope(tf.get_variable_scope(), reuse=(gpu_id > 0)):
 
-                        x_real_each = x_real_gpu_split[gpu_id]
-                        label_org_each = label_org_gpu_split[gpu_id]
+                        x_real_each = x_real_gpu_split[gpu_id] # [bs. h, w, 3]
+                        label_org_each = label_org_gpu_split[gpu_id] # [bs, 1]
                         label_trg_each = label_trg_gpu_split[gpu_id]
+
+                        ''' Define Generator, Discriminator '''
 
                         random_style_code = tf.random_normal(shape=[self.batch_size, self.style_dim])
                         random_style_code_1 = tf.random_normal(shape=[self.batch_size, self.style_dim])
@@ -333,6 +312,8 @@ class StarGAN_v2() :
 
                         real_logit = self.discriminator(x_real_each, label_org_each)
                         fake_logit = self.discriminator(x_fake, label_trg_each)
+
+                        ''' Define loss '''
 
                         g_adv_loss = self.adv_weight * generator_loss(self.gan_type, fake_logit)
                         g_sty_recon_loss = self.sty_weight * L1_loss(random_style, x_fake_style)
@@ -381,22 +362,11 @@ class StarGAN_v2() :
             D_vars = [var for var in t_vars if 'discriminator' in var.name]
 
             if self.gpu_num == 1 :
-                # prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars)
-                # prev_e_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=E_vars)
-                # prev_f_optimizer = tf.train.AdamOptimizer(self.lr * 0.01, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=F_vars)
                 prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars+E_vars+F_vars)
 
                 self.d_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.d_loss, var_list=D_vars)
 
             else :
-                # prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars,
-                #                                                                                  colocate_gradients_with_ops=True)
-                # prev_e_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss,
-                #                                                                                  var_list=E_vars,
-                #                                                                                  colocate_gradients_with_ops=True)
-                # prev_f_optimizer = tf.train.AdamOptimizer(self.lr * 0.01, beta1=0, beta2=0.99).minimize(self.g_loss,
-                #                                                                                         var_list=F_vars,
-                #                                                                                         colocate_gradients_with_ops=True)
                 prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, 
                                                                                                  var_list=G_vars+E_vars+F_vars,
                                                                                                  colocate_gradients_with_ops=True)
@@ -614,7 +584,6 @@ class StarGAN_v2() :
 
     def test(self):
         tf.global_variables_initializer().run()
-        # test_files = glob('./dataset/{}/{}/*.jpg'.format(self.dataset_name, 'test')) + glob('./dataset/{}/{}/*.png'.format(self.dataset_name, 'test'))
         test_files = glob(os.path.join(self.dataset_base, 'test', '*.jpg')) + glob(os.path.join(self.dataset_base, 'test', '*.png'))
         t_vars = tf.trainable_variables()
         G_vars = [var for var in t_vars if 'generator' in var.name or 'encoder' in var.name or 'mapping' in var.name]
@@ -696,7 +665,8 @@ class StarGAN_v2() :
             fake_img = self.sess.run(self.refer_fake_image, feed_dict={self.custom_image: sample_image, self.refer_image: refer_image})
             fake_img = np.transpose(fake_img, axes=[1, 0, 2, 3, 4])[0]
 
-            merge_x = return_images(fake_img, [1, self.c_dim]) # [self.img_height, self.img_width * self.c_dim, self.img_ch]
+            # merge_x = return_images(fake_img, [1, self.c_dim]) # [self.img_height, self.img_width * self.c_dim, self.img_ch]
+            merge_x = return_images(fake_img, [1, 1])
             merge_x = np.expand_dims(merge_x, axis=0)
 
             save_images(merge_x, [1, 1], image_path)
