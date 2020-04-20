@@ -1,4 +1,4 @@
-from StarGAN_v2_gather import StarGAN_v2
+from StarGAN_v2_dis import StarGAN_v2
 import argparse
 from utils import *
 

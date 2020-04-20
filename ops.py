@@ -339,3 +339,10 @@ def L1_loss(x, y):
     loss = tf.abs(x - y)
 
     return loss
+
+def L1_norm_loss(x, y):
+    x = x / tf.norm(x, ord=2, axis=1, keep_dims=True)
+    y = y / tf.norm(y, ord=2, axis=1, keep_dims=True)
+    loss = tf.abs(x - y)
+
+    return loss

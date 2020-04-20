@@ -2,6 +2,7 @@ from ops import *
 from utils import *
 import time
 from tensorflow.contrib.data import prefetch_to_device, shuffle_and_repeat, map_and_batch # tf 1.13
+from tensorflow.python.training import moving_averages
 
 import numpy as np
 from glob import glob
@@ -179,7 +180,7 @@ class StarGAN_v2() :
 
             return tf.gather_nd(style, index) # bs * 64
 
-    def mapping_network(self, latent_z, label, scope='mapping_network'):
+    def mapping_network(self, latent_z, label=None, scope='mapping_network'):
         channel = self.ch * pow(2, self.n_layer_1)
         with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
             x = latent_z
@@ -193,11 +194,16 @@ class StarGAN_v2() :
             style = fully_connected(x, units=64 * self.c_dim, use_bias=True, lr_mul=0.01, scope='style_fc')
             style = tf.reshape(style, (bs, self.c_dim, 64)) # bs * c_dim * 64
 
-            index = tf.reshape(tf.range(bs), (bs, 1))
-            label = tf.reshape(label, (bs, 1))
-            index = tf.concat([index, label], axis=1) # bs * 2
-
-            return tf.gather_nd(style, index) # bs * 64
+            if label is None:
+                
+                return style # bs * c_dim * 64
+            
+            else:
+                index = tf.reshape(tf.range(bs), (bs, 1))
+                label = tf.reshape(label, (bs, 1))
+                index = tf.concat([index, label], axis=1) # bs * 2
+                
+                return tf.gather_nd(style, index) # bs * 64
 
     ##################################################################################
     # Discriminator
@@ -244,6 +250,11 @@ class StarGAN_v2() :
 
         self.ema = tf.train.ExponentialMovingAverage(decay=self.ema_decay)
 
+        self.running_mean = tf.get_variable('running_mean', shape=(self.c_dim, self.style_dim), 
+                                            initializer=tf.zeros_initializer(), trainable=False)
+        self.running_var = tf.get_variable('running_var', shape=(self.c_dim, self.style_dim), 
+                                            initializer=tf.ones_initializer(), trainable=False)
+
         if self.phase == 'train' :
             """ Input Image"""
             img_class = Image_data(self.img_height, self.img_width, self.img_ch, self.dataset_path, self.label_list,
@@ -280,6 +291,8 @@ class StarGAN_v2() :
             g_cyc_loss_per_gpu = []
             g_loss_per_gpu = []
 
+            style_per_gpu = []
+
             d_adv_loss_per_gpu = []
             d_loss_per_gpu = []
 
@@ -294,6 +307,9 @@ class StarGAN_v2() :
                         ''' Define Generator, Discriminator '''
 
                         random_style_code = tf.random_normal(shape=[self.batch_size, self.style_dim])
+
+                        ## ?? 
+
                         random_style_code_1 = tf.random_normal(shape=[self.batch_size, self.style_dim])
                         random_style_code_2 = tf.random_normal(shape=[self.batch_size, self.style_dim])
 
@@ -344,6 +360,8 @@ class StarGAN_v2() :
                         g_loss_per_gpu.append(g_loss)
                         d_loss_per_gpu.append(d_loss)
 
+                        style_per_gpu.append(self.mapping_network(random_style_code))
+
             g_adv_loss = tf.reduce_mean(g_adv_loss_per_gpu)
             g_sty_recon_loss = tf.reduce_mean(g_sty_recon_loss_per_gpu)
             g_sty_diverse_loss = tf.reduce_mean(g_sty_diverse_loss_per_gpu)
@@ -353,6 +371,13 @@ class StarGAN_v2() :
             d_adv_loss = tf.reduce_mean(d_adv_loss_per_gpu)
             self.d_loss = tf.reduce_mean(d_loss_per_gpu)
 
+            style_mean, style_var = tf.moments(tf.concat(style_per_gpu, axis=0), axes=[0])
+            update_move_mean = moving_averages.assign_moving_average(
+                self.running_mean, style_mean, decay=0.99, zero_debias=False)
+            update_move_var = moving_averages.assign_moving_average(
+                self.running_var, style_var, decay=0.99, zero_debias=False)
+            tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, update_move_mean)
+            tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, update_move_var)
 
             """ Training """
             t_vars = tf.trainable_variables()
@@ -362,14 +387,16 @@ class StarGAN_v2() :
             D_vars = [var for var in t_vars if 'discriminator' in var.name]
 
             if self.gpu_num == 1 :
-                prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars+E_vars+F_vars)
+                with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
+                    prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, var_list=G_vars+E_vars+F_vars)
 
                 self.d_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.d_loss, var_list=D_vars)
 
             else :
-                prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, 
-                                                                                                 var_list=G_vars+E_vars+F_vars,
-                                                                                                 colocate_gradients_with_ops=True)
+                with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
+                    prev_g_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.g_loss, 
+                                                                                                     var_list=G_vars+E_vars+F_vars,
+                                                                                                     colocate_gradients_with_ops=True)
 
                 self.d_optimizer = tf.train.AdamOptimizer(self.lr, beta1=0, beta2=0.99).minimize(self.d_loss,
                                                                                                  var_list=D_vars,
@@ -379,7 +406,7 @@ class StarGAN_v2() :
                 # self.g_optimizer = self.ema.apply(G_vars)
                 # self.e_optimizer = self.ema.apply(E_vars)
                 # self.f_optimizer = self.ema.apply(F_vars)
-            with tf.control_dependencies([prev_g_optimizer]):
+            with tf.control_dependencies(prev_g_optimizer):
                 self.g_optimizer = self.ema.apply(G_vars+E_vars+F_vars)
 
             """" Summary """
