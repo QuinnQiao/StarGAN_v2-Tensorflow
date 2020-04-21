@@ -307,9 +307,6 @@ class StarGAN_v2() :
                         ''' Define Generator, Discriminator '''
 
                         random_style_code = tf.random_normal(shape=[self.batch_size, self.style_dim])
-
-                        ## ?? 
-
                         random_style_code_1 = tf.random_normal(shape=[self.batch_size, self.style_dim])
                         random_style_code_2 = tf.random_normal(shape=[self.batch_size, self.style_dim])
 
