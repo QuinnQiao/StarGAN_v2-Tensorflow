@@ -346,3 +346,6 @@ def L1_norm_loss(x, y):
     loss = tf.abs(x - y)
 
     return loss
+
+def cross_entropy(labels, logits):
+    return tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits)

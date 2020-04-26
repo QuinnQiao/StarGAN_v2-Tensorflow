@@ -663,16 +663,10 @@ class StarGAN_v2() :
         for sample_file in tqdm(test_files):
             print("Processing image: " + sample_file)
             sample_image = load_test_image(sample_file, self.img_width, self.img_height, self.img_ch)
-            # image_path = os.path.join(self.result_dir, '{}'.format(os.path.basename(sample_file)))
 
             fake_img = self.sess.run(self.refer_fake_image, feed_dict={self.custom_image: sample_image, self.refer_image: refer_image})
             fake_img = np.transpose(fake_img, axes=[1, 0, 2, 3, 4])[0]
 
-            # merge_x = return_images(fake_img, [1, self.c_dim]) # [self.img_height, self.img_width * self.c_dim, self.img_ch]
-            # merge_x = return_images(fake_img, [1, 1])
-            # merge_x = np.expand_dims(merge_x, axis=0)
-
-            # save_images(merge_x, [1, 1], image_path)
             if merge_x is None:
                 merge_x = fake_img
             else:
@@ -683,5 +677,6 @@ class StarGAN_v2() :
         w = np.ceil(n / h)
 
         merge_x = return_images(merge_x, [int(h), int(w)])
+        merge_x = np.expand_dims(merge_x, axis=0)
         image_path = os.path.join(self.result_dir, '{}'.format(os.path.basename(self.refer_img_path)))
         save_images(merge_x, [1, 1], image_path)

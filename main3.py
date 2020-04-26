@@ -29,6 +29,8 @@ def parse_args():
     parser.add_argument('--sty_weight', type=float, default=1, help='The weight of Style reconstruction loss') # 0.3 for animal
     parser.add_argument('--ds_weight', type=float, default=1, help='The weight of style diversification loss') # 1 for animal
     parser.add_argument('--cyc_weight', type=float, default=1, help='The weight of Cycle-consistency loss') # 0.1 for animal
+    parser.add_argument('--cls_weight', type=float, default=1)
+    parser.add_argument('--reg_weight', type=float, default=1)
 
     parser.add_argument('--r1_weight', type=float, default=1, help='The weight of R1 regularization')
     parser.add_argument('--gp_weight', type=float, default=10, help='The gradient penalty lambda')

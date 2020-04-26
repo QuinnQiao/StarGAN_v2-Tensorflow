@@ -53,6 +53,9 @@ class StarGAN_v2() :
         self.r1_weight = args.r1_weight
         self.gp_weight = args.gp_weight
 
+        self.cls_weight = args.cls_weight
+        self.reg_weight = args.reg_weight
+
         self.sn = args.sn
 
         """ Generator """
@@ -291,6 +294,9 @@ class StarGAN_v2() :
             g_cyc_loss_per_gpu = []
             g_loss_per_gpu = []
 
+            g_cls_loss_per_gpu = []
+            g_reg_loss_per_gpu = []
+
             style_per_gpu = []
 
             d_adv_loss_per_gpu = []
@@ -326,6 +332,24 @@ class StarGAN_v2() :
                         real_logit = self.discriminator(x_real_each, label_org_each)
                         fake_logit = self.discriminator(x_fake, label_trg_each)
 
+                        #######################################################################################################
+                        bs = label_trg_each.shape[0]
+
+                        mean_to_catch = tf.gather_nd(self.running_mean, label_trg_each)
+                        var_to_catch = tf.gather_nd(self.running_var, label_trg_each)
+
+                        index_to_pert = tf.random.uniform(shape=(bs,), minval=0, maxval=self.style_dim, dtype=tf.int32)
+                        index_to_pert_onehot = tf.one_hot(index_to_pert, depth=self.style_dim)
+
+                        random_coeff = tf.random.uniform(shape=(bs, 1), minval=-np.sqrt(3), maxval=np.sqrt(3))
+                        perturbation = mean_to_catch + random_coeff * tf.sqrt(var_to_catch)
+                        pert_style = random_style * (1 - index_to_pert_onehot) + perturbation * index_to_pert_onehot
+
+                        x_fake_pert = self.generator(x_real_each, pert_style)
+                        x_fake_pert_style = self.style_encoder(x_fake_pert, label_trg_each)
+
+                        #######################################################################################################
+
                         ''' Define loss '''
 
                         g_adv_loss = self.adv_weight * generator_loss(self.gan_type, fake_logit)
@@ -336,21 +360,36 @@ class StarGAN_v2() :
                         d_adv_loss = self.adv_weight * discriminator_loss(self.gan_type, real_logit, fake_logit)
                         d_simple_gp = self.adv_weight * simple_gp(real_logit, fake_logit, x_real_each, x_fake, r1_gamma=self.r1_weight, r2_gamma=0.0)
 
+                        #######################################################################################################
+
+                        # random style instead of x_fake_style
+                        g_cls_loss = self.cls_weight * cross_entropy(index_to_pert_onehot, tf.abs(x_fake_pert_style - random_style))
+                        g_reg_loss = self.reg_weight * tf.reduce_sum(L1_loss(
+                                                tf.abs(x_fake_pert_style - x_fake_style), tf.abs(pert_style - random_style)), axis=1)
+
+                        #######################################################################################################
+
                         g_adv_loss = tf.reduce_mean(g_adv_loss)
                         g_sty_recon_loss = tf.reduce_mean(g_sty_recon_loss)
                         g_sty_diverse_loss = tf.reduce_mean(g_sty_diverse_loss)
                         g_cyc_loss = tf.reduce_mean(g_cyc_loss)
 
+                        g_cls_loss = tf.reduce_mean(g_cls_loss)
+                        g_reg_loss = tf.reduce_mean(g_reg_loss)
+
                         d_adv_loss = tf.reduce_mean(d_adv_loss)
                         d_simple_gp = tf.reduce_mean(tf.reduce_sum(d_simple_gp, axis=[1, 2, 3]))
 
-                        g_loss = g_adv_loss + g_sty_recon_loss - g_sty_diverse_loss + g_cyc_loss
+                        g_loss = g_adv_loss + g_sty_recon_loss - g_sty_diverse_loss + g_cyc_loss + g_cls_loss + g_reg_loss
                         d_loss = d_adv_loss + d_simple_gp
 
                         g_adv_loss_per_gpu.append(g_adv_loss)
                         g_sty_recon_loss_per_gpu.append(g_sty_recon_loss)
                         g_sty_diverse_loss_per_gpu.append(g_sty_diverse_loss)
                         g_cyc_loss_per_gpu.append(g_cyc_loss)
+
+                        g_cls_loss_per_gpu.append(g_cls_loss)
+                        g_reg_loss_per_gpu.append(g_reg_loss)
 
                         d_adv_loss_per_gpu.append(d_adv_loss)
 
@@ -363,6 +402,10 @@ class StarGAN_v2() :
             g_sty_recon_loss = tf.reduce_mean(g_sty_recon_loss_per_gpu)
             g_sty_diverse_loss = tf.reduce_mean(g_sty_diverse_loss_per_gpu)
             g_cyc_loss = tf.reduce_mean(g_cyc_loss_per_gpu)
+
+            g_cls_loss = tf.reduce_mean(g_cls_loss_per_gpu)
+            g_reg_loss = tf.reduce_mean(g_reg_loss_per_gpu)
+
             self.g_loss = tf.reduce_mean(g_loss_per_gpu)
 
             d_adv_loss = tf.reduce_mean(d_adv_loss_per_gpu)
@@ -415,9 +458,13 @@ class StarGAN_v2() :
             self.g_sty_diverse_loss = tf.summary.scalar("g_sty_diverse_loss", g_sty_diverse_loss)
             self.g_cyc_loss = tf.summary.scalar("g_cyc_loss", g_cyc_loss)
 
+            self.g_cls_loss = tf.summary.scalar("g_cls_loss", g_cls_loss)
+            self.g_reg_loss = tf.summary.scalar("g_reg_loss", g_reg_loss)
+
             self.d_adv_loss = tf.summary.scalar("d_adv_loss", d_adv_loss)
 
-            g_summary_list = [self.Generator_loss, self.g_adv_loss, self.g_sty_recon_loss, self.g_sty_diverse_loss, self.g_cyc_loss]
+            g_summary_list = [self.Generator_loss, self.g_adv_loss, self.g_sty_recon_loss, self.g_sty_diverse_loss, 
+                                self.g_cyc_loss, self.g_cls_loss, self.g_reg_loss]
             d_summary_list = [self.Discriminator_loss, self.d_adv_loss]
 
             self.g_summary_loss = tf.summary.merge(g_summary_list)
@@ -680,17 +727,26 @@ class StarGAN_v2() :
             print(" [*] Load SUCCESS")
         else :
             print(" [!] Load failed...")
+        
+        merge_x = None
 
         for sample_file in tqdm(test_files):
             print("Processing image: " + sample_file)
             sample_image = load_test_image(sample_file, self.img_width, self.img_height, self.img_ch)
-            image_path = os.path.join(self.result_dir, '{}'.format(os.path.basename(sample_file)))
 
             fake_img = self.sess.run(self.refer_fake_image, feed_dict={self.custom_image: sample_image, self.refer_image: refer_image})
             fake_img = np.transpose(fake_img, axes=[1, 0, 2, 3, 4])[0]
 
-            # merge_x = return_images(fake_img, [1, self.c_dim]) # [self.img_height, self.img_width * self.c_dim, self.img_ch]
-            merge_x = return_images(fake_img, [1, 1])
-            merge_x = np.expand_dims(merge_x, axis=0)
+            if merge_x is None:
+                merge_x = fake_img
+            else:
+                merge_x = np.concatenate([merge_x, fake_img], axis=0)
 
-            save_images(merge_x, [1, 1], image_path)
+        n = merge_x.shape[0]
+        h = np.sqrt(n)
+        w = np.ceil(n / h)
+
+        merge_x = return_images(merge_x, [int(h), int(w)])
+        merge_x = np.expand_dims(merge_x, axis=0)
+        image_path = os.path.join(self.result_dir, '{}'.format(os.path.basename(self.refer_img_path)))
+        save_images(merge_x, [1, 1], image_path)
